@@ -8,9 +8,9 @@ import threading # For running upscale in a separate thread
 # Assuming upscaler.py and utils.py are in the same directory or accessible in PYTHONPATH
 try:
     import upscaler
-    import utils
-except ModuleNotFoundError:
-    messagebox.showerror("Error", "Could not import 'upscaler' or 'utils' modules. Ensure they are in the same directory.")
+    import utils # Ensure utils is also checked here
+except ModuleNotFoundError as e:
+    messagebox.showerror("Error", f"Could not import 'upscaler' or 'utils' modules. Ensure they are in the same directory and all dependencies are installed. Error: {e}")
     exit()
 
 
@@ -192,16 +192,16 @@ class ImageUpscalerApp:
 
             # Schedule GUI updates to be run in the main thread
             if self.upscaled_pil_image:
-                self.root.after(0, self.on_upscale_complete, True)
+                self.root.after(0, self.on_upscale_complete, True, scale_factor) # Pass scale_factor
             else:
-                self.root.after(0, self.on_upscale_complete, False, "Upscaling process failed or returned no image.")
+                self.root.after(0, self.on_upscale_complete, False, scale_factor, "Upscaling process failed or returned no image.")
 
         except Exception as e:
             logging.error(f"Error during upscaling process: {e}")
             # Ensure GUI update happens in main thread
-            self.root.after(0, self.on_upscale_complete, False, f"Error: {e}")
+            self.root.after(0, self.on_upscale_complete, False, scale_factor, f"Error: {e}") # Pass scale_factor
 
-    def on_upscale_complete(self, success, error_message=None):
+    def on_upscale_complete(self, success, scale_factor, error_message=None): # Accept scale_factor
         self.upscale_button.config(state=tk.NORMAL)
         self.load_button.config(state=tk.NORMAL)
 
@@ -210,27 +210,18 @@ class ImageUpscalerApp:
 
             new_w, new_h = self.upscaled_pil_image.size
 
-            # Estimate new DPI - if original DPI was known, it's scaled. Otherwise, remains N/A.
             est_dpi_x, est_dpi_y = self.original_dpi
-            if est_dpi_x is not None: est_dpi_x *= scale_factor # scale_factor needs to be accessible or passed
-            if est_dpi_y is not None: est_dpi_y *= scale_factor # scale_factor needs to be accessible or passed
+            if est_dpi_x is not None:
+                est_dpi_x *= scale_factor
+            if est_dpi_y is not None:
+                est_dpi_y *= scale_factor
 
-            # This part is tricky because scale_factor is not directly available here.
-            # For simplicity, we'll just show dimensions.
-            # Proper DPI estimation would require passing scale_factor or recalculating.
-            # Or, better, get it from the image if upscaler sets it (which it doesn't currently)
-            # For now, let's assume the upscaler doesn't modify DPI metadata directly.
-            # We can try to set it based on original if available.
-            current_scale_factor = int(self.scale_var.get()) # Get current selection
-            if self.original_dpi[0] and self.original_dpi[1]:
-                est_dpi_str = f"{int(self.original_dpi[0] * current_scale_factor)}x{int(self.original_dpi[1] * current_scale_factor)}"
-                 # Try to set DPI in the upscaled image object for saving
-                self.upscaled_pil_image = utils.set_image_dpi(self.upscaled_pil_image,
-                                                              self.original_dpi[0] * current_scale_factor,
-                                                              self.original_dpi[1] * current_scale_factor)
+            if est_dpi_x is not None and est_dpi_y is not None:
+                est_dpi_str = f"{int(est_dpi_x)}x{int(est_dpi_y)}"
+                # Try to set DPI in the upscaled image object for saving
+                self.upscaled_pil_image = utils.set_image_dpi(self.upscaled_pil_image, est_dpi_x, est_dpi_y)
             else:
                 est_dpi_str = "N/A (Original DPI unknown)"
-
 
             self.upscaled_info_label.config(text=f"Dimensions: {new_w}x{new_h} | Est. DPI: {est_dpi_str}")
             self.save_button.config(state=tk.NORMAL)
@@ -264,7 +255,8 @@ class ImageUpscalerApp:
         # Suggest a filename
         original_filename = os.path.basename(self.image_path)
         name, ext = os.path.splitext(original_filename)
-        suggested_filename = f"{name}_upscaled_{self.scale_var.get()}x" # Add scale factor
+        # Use the scale_var directly, which holds the string "2" or "4"
+        suggested_filename = f"{name}_upscaled_{self.scale_var.get()}x"
 
         save_path = filedialog.asksaveasfilename(
             title="Save Upscaled Image As...",
@@ -328,7 +320,7 @@ if __name__ == '__main__':
                 print(f"Downloading {upscaler.MODEL_NAME_X4} to {models_dir}...")
                 response = requests.get(model_url_x4, stream=True)
                 response.raise_for_status()
-                with open(model_x4_path, 'wb') as f:
+                with open(os.path.join(models_dir, upscaler.MODEL_NAME_X4), 'wb') as f: # Use os.path.join here
                     total_length = response.headers.get('content-length')
                     if total_length is None: # no content length header
                         f.write(response.content)

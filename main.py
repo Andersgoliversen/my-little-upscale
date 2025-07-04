@@ -7,6 +7,7 @@ import sys
 try:
     from gui import ImageUpscalerApp
     import upscaler # To trigger its initial checks/setup if any, like model availability warnings
+    import utils # Ensure utils is also imported here to catch potential issues early.
 except ModuleNotFoundError as e:
     # This is a critical failure, the application cannot run.
     # Best effort to show a GUI message if tkinter is available.
@@ -32,7 +33,7 @@ except ImportError as e:
 
 
 # Configure basic logging for the main application
-# This could be more sophisticated, e.g., writing to a file
+# This could be more sophisticated, e.g., writing to a file, but simple console logging is fine for now.
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
 
 def main():
