@@ -1,0 +1,25 @@
+# Python virtual environment
+.venv/
+env/
+venv/
+__pycache__/
+*.pyc
+
+# Real-ESRGAN pre-trained models
+# These are large binary files and should be downloaded separately.
+models/*.pth
+models/*.pt
+models/*.ckpt
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Operating System generated files
+.DS_Store
+Thumbs.db
