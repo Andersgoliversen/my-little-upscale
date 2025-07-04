@@ -9,7 +9,7 @@ A Python application for image upscaling with a graphical user interface using R
 - Preview original and upscaled images.
 - Save upscaled images in various formats (PNG, TIFF, JPEG).
 - Displays image dimensions and DPI.
-• User-selectable target DPI written into the saved file’s metadata.
+- User-selectable target DPI written into the saved file’s metadata.
 
 ## Setup
 
