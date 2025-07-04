@@ -51,6 +51,13 @@ class ImageUpscalerApp:
         self.scale_radio_4x = ttk.Radiobutton(control_frame, text="4x", variable=self.scale_var, value="4")
         self.scale_radio_4x.pack(side=tk.LEFT, padx=5, pady=5)
 
+        ttk.Label(control_frame, text="Target DPI:").pack(side=tk.LEFT, padx=(20, 5), pady=5)
+        self.dpi_var = tk.StringVar(value="300")
+        self.dpi_entry = ttk.Entry(control_frame, width=6, textvariable=self.dpi_var)
+        self.dpi_entry.pack(side=tk.LEFT, padx=5, pady=5)
+        vcmd = (self.root.register(self._validate_dpi), '%P')
+        self.dpi_entry.config(validate='key', validatecommand=vcmd)
+
         # Upscale Button
         self.upscale_button = ttk.Button(control_frame, text="Upscale Image", command=self.start_upscale_thread, state=tk.DISABLED)
         self.upscale_button.pack(side=tk.LEFT, padx=20, pady=5)
@@ -75,7 +82,7 @@ class ImageUpscalerApp:
 
         self.upscaled_image_label = ttk.Label(upscaled_frame, text="Upscaled image will appear here", anchor=tk.CENTER)
         self.upscaled_image_label.pack(fill=tk.BOTH, expand=True)
-        self.upscaled_info_label = ttk.Label(upscaled_frame, text="Dimensions: N/A | Est. DPI: N/A")
+        self.upscaled_info_label = ttk.Label(upscaled_frame, text="Dimensions: N/A | DPI: N/A")
         self.upscaled_info_label.pack(side=tk.BOTTOM, fill=tk.X)
 
         # --- Status Frame Widgets ---
@@ -103,6 +110,16 @@ class ImageUpscalerApp:
         """Set progress bar value safely."""
         self.progress_bar['value'] = max(0, min(100, percent))
         self.root.update_idletasks()
+
+    def _validate_dpi(self, text):
+        return text.isdigit() or text == ""
+
+    def _get_target_dpi(self) -> int | None:
+        try:
+            dpi = int(self.dpi_var.get())
+            return dpi if dpi > 0 else None
+        except ValueError:
+            return None
 
 
     def _display_image(self, pil_image, label_widget, max_size=(380, 380)):
@@ -154,7 +171,7 @@ class ImageUpscalerApp:
             self.save_button.config(state=tk.DISABLED) # Disable save until upscale
             self.upscaled_image_label.configure(image='', text="Upscaled image will appear here")
             self.upscaled_image_label.image = None
-            self.upscaled_info_label.config(text="Dimensions: N/A | Est. DPI: N/A")
+            self.upscaled_info_label.config(text="Dimensions: N/A | DPI: N/A")
             self.upscaled_pil_image = None
             self._update_status(f"Loaded: {os.path.basename(path)}")
 
@@ -230,20 +247,16 @@ class ImageUpscalerApp:
 
             new_w, new_h = self.upscaled_pil_image.size
 
-            est_dpi_x, est_dpi_y = self.original_dpi
-            if est_dpi_x is not None:
-                est_dpi_x *= scale_factor
-            if est_dpi_y is not None:
-                est_dpi_y *= scale_factor
+            target_dpi = self._get_target_dpi()
+            if target_dpi:
+                self.upscaled_pil_image = utils.set_image_dpi(
+                    self.upscaled_pil_image, target_dpi, target_dpi
+                )
 
-            if est_dpi_x is not None and est_dpi_y is not None:
-                est_dpi_str = f"{int(est_dpi_x)}x{int(est_dpi_y)}"
-                # Try to set DPI in the upscaled image object for saving
-                self.upscaled_pil_image = utils.set_image_dpi(self.upscaled_pil_image, est_dpi_x, est_dpi_y)
-            else:
-                est_dpi_str = "N/A (Original DPI unknown)"
-
-            self.upscaled_info_label.config(text=f"Dimensions: {new_w}x{new_h} | Est. DPI: {est_dpi_str}")
+            dpi_text = f"DPI: {target_dpi}" if target_dpi else "DPI: N/A"
+            self.upscaled_info_label.config(
+                text=f"Dimensions: {new_w}×{new_h} | {dpi_text}"
+            )
             self.save_button.config(state=tk.NORMAL)
             # Show full progress before hiding the bar
             self._set_progress(100)
@@ -253,7 +266,7 @@ class ImageUpscalerApp:
             messagebox.showerror("Upscale Error", final_error_message)
             self.upscaled_image_label.configure(image='', text="Upscaling failed.")
             self.upscaled_image_label.image = None
-            self.upscaled_info_label.config(text="Dimensions: N/A | Est. DPI: N/A")
+            self.upscaled_info_label.config(text="Dimensions: N/A | DPI: N/A")
             # Set to full progress to indicate completion even on failure
             self._set_progress(100)
             self._update_status(f"Upscaling failed: {final_error_message}", False)
@@ -304,6 +317,10 @@ class ImageUpscalerApp:
             elif file_ext == '.png':
                 save_options['optimize'] = True
             # TIFF can have compression options, e.g., 'tiff_compression': 'tiff_lzw'
+
+            target_dpi = self._get_target_dpi()
+            if target_dpi:
+                save_options['dpi'] = (target_dpi, target_dpi)
 
             # Ensure DPI is in the image info if calculated (done in on_upscale_complete)
             # self.upscaled_pil_image already has DPI set if original was known
