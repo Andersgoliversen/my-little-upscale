@@ -81,19 +81,27 @@ class ImageUpscalerApp:
         # --- Status Frame Widgets ---
         self.status_label = ttk.Label(status_frame, text="Ready. Load an image to start.")
         self.status_label.pack(side=tk.LEFT, padx=5, pady=5)
-        self.progress_bar = ttk.Progressbar(status_frame, mode='indeterminate')
-        # self.progress_bar.pack(side=tk.RIGHT, padx=5, pady=5) # Pack when needed
+        # Determinate progress bar for showing percentage completed
+        self.progress_bar = ttk.Progressbar(status_frame, mode='determinate', maximum=100)
+        # self.progress_bar.pack(side=tk.RIGHT, padx=5, pady=5)  # Packed when active
 
     def _update_status(self, message, show_progress=False):
+        """Update the status label and optionally show the progress bar."""
         self.status_label.config(text=message)
         if show_progress:
-            if not self.progress_bar.winfo_ismapped(): # Avoid repacking if already visible
+            if not self.progress_bar.winfo_ismapped():
                 self.progress_bar.pack(side=tk.RIGHT, padx=5, pady=5, fill=tk.X, expand=True)
-            self.progress_bar.start(10)
+            # Reset bar when shown in determinate mode
+            self.progress_bar['value'] = 0
         else:
-            self.progress_bar.stop()
             if self.progress_bar.winfo_ismapped():
-                 self.progress_bar.pack_forget()
+                self.progress_bar.pack_forget()
+            self.progress_bar['value'] = 0
+        self.root.update_idletasks()
+
+    def _set_progress(self, percent):
+        """Set progress bar value safely."""
+        self.progress_bar['value'] = max(0, min(100, percent))
         self.root.update_idletasks()
 
 
@@ -177,18 +185,30 @@ class ImageUpscalerApp:
             return
 
         self._update_status(f"Upscaling image by {scale_factor}x...", True)
+        self._set_progress(0)
         self.upscale_button.config(state=tk.DISABLED)
         self.load_button.config(state=tk.DISABLED)
         self.save_button.config(state=tk.DISABLED)
 
         # Run upscaling in a separate thread to keep UI responsive
+        # Pass a progress callback to update the progress bar from the worker thread
         thread = threading.Thread(target=self.perform_upscale, args=(scale_factor,))
         thread.daemon = True # Allow main program to exit even if thread is running
         thread.start()
 
     def perform_upscale(self, scale_factor):
+        """Run the upscale operation in a background thread."""
+        def progress(percent):
+            """Thread-safe progress update."""
+            self.root.after(0, self._set_progress, percent)
+
         try:
-            self.upscaled_pil_image = upscaler.upscale_image(self.image_path, scale_factor)
+            # Pass progress callback so the GUI can show rough progress
+            self.upscaled_pil_image = upscaler.upscale_image(
+                self.image_path,
+                scale_factor,
+                progress_callback=progress
+            )
 
             # Schedule GUI updates to be run in the main thread
             if self.upscaled_pil_image:
@@ -225,6 +245,8 @@ class ImageUpscalerApp:
 
             self.upscaled_info_label.config(text=f"Dimensions: {new_w}x{new_h} | Est. DPI: {est_dpi_str}")
             self.save_button.config(state=tk.NORMAL)
+            # Show full progress before hiding the bar
+            self._set_progress(100)
             self._update_status("Upscaling complete.", False)
         else:
             final_error_message = error_message or "Upscaling failed."
@@ -232,10 +254,11 @@ class ImageUpscalerApp:
             self.upscaled_image_label.configure(image='', text="Upscaling failed.")
             self.upscaled_image_label.image = None
             self.upscaled_info_label.config(text="Dimensions: N/A | Est. DPI: N/A")
+            # Set to full progress to indicate completion even on failure
+            self._set_progress(100)
             self._update_status(f"Upscaling failed: {final_error_message}", False)
 
-        # Reset progress bar regardless
-        self.progress_bar.stop()
+        # Ensure progress bar is hidden when done
         if self.progress_bar.winfo_ismapped():
             self.progress_bar.pack_forget()
 
@@ -269,6 +292,7 @@ class ImageUpscalerApp:
             return
 
         self._update_status(f"Saving image to {os.path.basename(save_path)}...", True)
+        self._set_progress(0)
         try:
             # Handle JPEG quality - for simplicity, not adding a slider now, using high quality.
             save_options = {}
@@ -284,7 +308,10 @@ class ImageUpscalerApp:
             # Ensure DPI is in the image info if calculated (done in on_upscale_complete)
             # self.upscaled_pil_image already has DPI set if original was known
 
+            # Writing to disk can take some time on large files; progress is rough
+            self._set_progress(50)
             self.upscaled_pil_image.save(save_path, **save_options)
+            self._set_progress(100)
             messagebox.showinfo("Success", f"Image saved successfully to:\n{save_path}")
             self._update_status(f"Saved: {os.path.basename(save_path)}", False)
         except Exception as e:
@@ -292,9 +319,8 @@ class ImageUpscalerApp:
             logging.error(f"Failed to save image to {save_path}: {e}")
             self._update_status(f"Error saving image: {e}", False)
         finally:
-            # Ensure progress bar is handled correctly
+            # Hide progress bar when finished
             if self.progress_bar.winfo_ismapped():
-                self.progress_bar.stop()
                 self.progress_bar.pack_forget()
 
 

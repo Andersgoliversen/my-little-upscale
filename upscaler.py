@@ -96,7 +96,12 @@ def get_realesrgan_upsampler(scale_factor: int, model_dir: str = DEFAULT_MODEL_D
         return None
 
 
-def upscale_image(image_path: str, scale_factor: int, model_dir: str = DEFAULT_MODEL_DIR) -> Image.Image | None:
+def upscale_image(
+    image_path: str,
+    scale_factor: int,
+    model_dir: str = DEFAULT_MODEL_DIR,
+    progress_callback=None,
+) -> Image.Image | None:
     """
     Upscales an image using Real-ESRGAN.
 
@@ -104,12 +109,16 @@ def upscale_image(image_path: str, scale_factor: int, model_dir: str = DEFAULT_M
         image_path: Path to the input image.
         scale_factor: The desired upscale factor (2 or 4).
         model_dir: Directory containing the model files.
+        progress_callback: Optional callable receiving an integer percentage. Used
+            to report rough progress back to the caller.
 
     Returns:
         A PIL Image object of the upscaled image, or None if an error occurs.
     """
     try:
         img_pil = Image.open(image_path).convert('RGB')
+        if progress_callback:
+            progress_callback(10)
     except FileNotFoundError:
         logging.error(f"Image file not found: {image_path}")
         return None
@@ -121,16 +130,22 @@ def upscale_image(image_path: str, scale_factor: int, model_dir: str = DEFAULT_M
     img_cv = np.array(img_pil)
     # RealESRGANer expects BGR, Pillow opens as RGB
     img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2BGR)
+    if progress_callback:
+        progress_callback(20)
 
     upsampler = get_realesrgan_upsampler(scale_factor, model_dir)
     if not upsampler:
         return None
+    if progress_callback:
+        progress_callback(30)
 
     try:
         # Perform inference
         # The 'outscale' parameter in upsampler.enhance is the final desired scale.
         # The upsampler itself is loaded based on its native scale (model_netscale).
         output_cv, _ = upsampler.enhance(img_cv, outscale=scale_factor)
+        if progress_callback:
+            progress_callback(90)
 
         if output_cv is None:
             logging.error("Upscaling process returned None.")
@@ -152,6 +167,8 @@ def upscale_image(image_path: str, scale_factor: int, model_dir: str = DEFAULT_M
     # Convert OpenCV BGR output back to RGB Pillow Image
     output_rgb = cv2.cvtColor(output_cv, cv2.COLOR_BGR2RGB)
     upscaled_image_pil = Image.fromarray(output_rgb)
+    if progress_callback:
+        progress_callback(100)
 
     logging.info(f"Image {image_path} successfully upscaled by {scale_factor}x.")
     return upscaled_image_pil
