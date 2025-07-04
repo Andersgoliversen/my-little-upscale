@@ -1,0 +1,8 @@
+# Dependencies for My Little Upscale
+# This file will be populated with required packages and versions
+Pillow
+torch
+torchvision
+basicsr
+opencv-python
+numpy
